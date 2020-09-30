@@ -3,7 +3,7 @@ from qtpy import QtGui
 from qtpy import QtWidgets
 
 from labelme import QT5
-from labelme.shape import Shape
+from labelme.shape import Shape, HelpShape
 import labelme.utils
 
 
@@ -59,6 +59,9 @@ class Canvas(QtWidgets.QWidget):
         #   - createMode == 'line': the line
         #   - createMode == 'point': the point
         self.line = Shape()
+
+        self.helpline = [HelpShape() for _ in range(4)]
+
         self.prevPoint = QtCore.QPoint()
         self.prevMovePoint = QtCore.QPoint()
         self.offsets = QtCore.QPoint(), QtCore.QPoint()
@@ -558,7 +561,7 @@ class Canvas(QtWidgets.QWidget):
         Shape.scale = self.scale
         for shape in self.shapes:
             if (shape.selected or not self._hideBackround) and self.isVisible(
-                shape
+                    shape
             ):
                 shape.fill = shape.selected or shape == self.hShape
                 shape.paint(p)
@@ -580,6 +583,8 @@ class Canvas(QtWidgets.QWidget):
             drawing_shape.fill = True
             drawing_shape.paint(p)
 
+        self.updatehelpline(p)
+
         p.end()
 
     def transformPos(self, point):
@@ -598,6 +603,25 @@ class Canvas(QtWidgets.QWidget):
     def outOfPixmap(self, p):
         w, h = self.pixmap.width(), self.pixmap.height()
         return not (0 <= p.x() <= w - 1 and 0 <= p.y() <= h - 1)
+
+    def updatehelpline(self, p):
+        pts = {
+            '左后': [], '右后': [], '左前': [], '右前': []
+        }
+
+        hldefs = [('左后', '左前'), ('右后', '右前'), ('左后', '右后'), ('左前', '右前')]
+
+        for s in self.shapes:
+            if s.shape_type == 'point' and s.label in pts:
+                pts[s.label].append(s.points[0])
+
+        for i, (hldef, hl) in enumerate(zip(hldefs, self.helpline)):
+            hl.points = []
+            for p1 in pts[hldef[0]]:
+                for p2 in pts[hldef[1]]:
+                    hl.points = [p1, p2]
+                    hl.shape_type = 'line'
+                    hl.paint(p, self.pixmap.size())
 
     def finalise(self):
         assert self.current
