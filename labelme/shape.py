@@ -360,30 +360,3 @@ class HelpShape(Shape):
             pen.setColor(QtGui.QColor(255, 0, 0, 128))
             painter.setPen(pen)
             painter.drawLine(*self.points)
-
-class LimitBox(Shape):
-    def paint(self, painter, size):
-        if self.points and self.points[0] != self.points[1]:
-            color = (
-                self.select_line_color if self.selected else self.line_color
-            )
-            pen = QtGui.QPen(color)
-            # Try using integer sizes for smoother drawing(?)
-            pen.setWidth(0.1)
-            pen.setStyle(QtCore.Qt.DashLine)
-            painter.setPen(pen)
-
-            direct1 = direct2 = self.points[1] - self.points[0]
-            while self._inside(self.points[0] + direct1, size):
-                direct1 *= 2
-            pt1 = self.points[0] + direct1
-            while self._inside(self.points[0] - direct2, size):
-                direct2 *= 2
-            pt2 = self.points[0] - direct1
-
-            painter.drawLine(self.points[1], pt1)
-            painter.drawLine(self.points[0], pt2)
-            pen.setStyle(QtCore.Qt.SolidLine)
-            pen.setColor(QtGui.QColor(255, 0, 0, 128))
-            painter.setPen(pen)
-            painter.drawLine(*self.points)
