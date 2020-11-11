@@ -3,7 +3,7 @@ from qtpy import QtGui
 from qtpy import QtWidgets
 
 from labelme import QT5
-from labelme.shape import Shape, HelpShape,LimitBox
+from labelme.shape import Shape, HelpShape
 import labelme.utils
 
 # TODO(unknown):
@@ -59,7 +59,7 @@ class Canvas(QtWidgets.QWidget):
         self.line = Shape()
 
         self.helpline = [HelpShape() for _ in range(4)]
-        self.limit_box= LimitBox()
+
         self.prevPoint = QtCore.QPoint()
         self.prevMovePoint = QtCore.QPoint()
         self.offsets = QtCore.QPoint(), QtCore.QPoint()
@@ -120,7 +120,7 @@ class Canvas(QtWidgets.QWidget):
     @property
     def isShapeRestorable(self):
         if len(self.shapesBackups) < 2:
-            return Falseself.limit_box
+            return False
         return True
 
     def restoreShape(self):
@@ -586,7 +586,7 @@ class Canvas(QtWidgets.QWidget):
             drawing_shape.paint(p)
 
         self.updatehelpline(p)
-        self.updateLimitBox(p)
+
         p.end()
 
     def transformPos(self, point):
@@ -624,9 +624,6 @@ class Canvas(QtWidgets.QWidget):
                     hl.points = [p1, p2]
                     hl.shape_type = 'line'
                     hl.paint(p, self.pixmap.size())
-
-    def updateLimitBox(self,p):
-        self.limit_box.paint(p, self.pixmap.size())
 
     def finalise(self):
         assert self.current
