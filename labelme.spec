@@ -18,7 +18,7 @@ a = Analysis(
     hiddenimports=[],
     hookspath=[],
     runtime_hooks=[],
-    excludes=[],
+    excludes=['matplotlib'],
 )
 pyz = PYZ(a.pure, a.zipped_data)
 exe = EXE(

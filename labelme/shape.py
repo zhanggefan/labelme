@@ -3,9 +3,8 @@ import math
 
 from qtpy import QtCore
 from qtpy import QtGui
-
+import numpy as np
 import labelme.utils
-
 
 # TODO(unknown):
 # - [opt] Store paths instead of creating new ones at each paint.
@@ -20,7 +19,6 @@ DEFAULT_HVERTEX_FILL_COLOR = QtGui.QColor(255, 255, 255, 255)  # hovering
 
 
 class Shape(object):
-
     P_SQUARE, P_ROUND = 0, 1
 
     MOVE_VERTEX, NEAR_VERTEX = 0, 1
@@ -37,12 +35,13 @@ class Shape(object):
     scale = 1.0
 
     def __init__(
-        self,
-        label=None,
-        line_color=None,
-        shape_type=None,
-        flags=None,
-        group_id=None,
+            self,
+            label=None,
+            line_color=None,
+            shape_type=None,
+            flags=None,
+            group_id=None,
+            orientation=0,
     ):
         self.label = label
         self.group_id = group_id
@@ -52,7 +51,8 @@ class Shape(object):
         self.shape_type = shape_type
         self.flags = flags
         self.other_data = {}
-
+        self.ori=0
+        self.ori_sum=orientation
         self._highlightIndex = None
         self._highlightMode = self.NEAR_VERTEX
         self._highlightSettings = {
@@ -81,6 +81,7 @@ class Shape(object):
         if value not in [
             "polygon",
             "rectangle",
+            "rotation_rectangle",
             "point",
             "line",
             "circle",
@@ -123,6 +124,31 @@ class Shape(object):
         x2, y2 = pt2.x(), pt2.y()
         return QtCore.QRectF(x1, y1, x2 - x1, y2 - y1)
 
+    def getRotationPoints(self, ori,ori_sum,pt1, pt2): #ori_sum-ori:current orientation
+        R_ro_to_rect = np.asarray([[math.cos(ori-ori_sum), -math.sin(ori-ori_sum)],
+                                   [math.sin(ori-ori_sum), math.cos(ori-ori_sum)]])
+        R_rect_to_ro=np.asarray([[math.cos(ori_sum),-math.sin(ori_sum)],
+                                 [math.sin(ori_sum),math.cos(ori_sum)]])
+        cur_center=np.asarray([[(pt1.x() + pt2.x()) * 0.5],
+                               [(pt1.y() + pt2.y()) * 0.5]])
+        cur_pt1=np.asarray([[pt1.x()],
+                            [pt1.y()]])
+        cur_pt2=np.asarray([[pt2.x()],
+                            [pt2.y()]])
+        raw_pt1=R_ro_to_rect.dot(cur_pt1-cur_center)+cur_center
+        raw_pt2=R_ro_to_rect.dot(cur_pt2-cur_center)+cur_center
+        wh=raw_pt2-raw_pt1
+        center=raw_pt1+0.5*wh
+        # center = np.asarray([[pt1.x() + 0.5 * w],
+        #                      [pt1.y() + 0.5 * h]])
+        offsets = np.asarray([[0, 0], [wh[0][0], 0], [wh[0][0], wh[1][0]], [0, wh[1][0]]])- center.reshape([1, 2])
+        re = []
+        for offset in offsets:
+            ro_pt = R_rect_to_ro.dot(raw_pt1+offset.reshape(2,1))
+            ro_pt += center
+            re.append(QtCore.QPointF(ro_pt[0], ro_pt[1]))
+        return re
+
     def paint(self, painter):
         if self.points:
             color = (
@@ -143,6 +169,23 @@ class Shape(object):
                     line_path.addRect(rectangle)
                 for i in range(len(self.points)):
                     self.drawVertex(vrtx_path, i)
+            elif self.shape_type == "rotation_rectangle":
+                assert len(self.points) in [1, 2]
+                if len(self.points) == 2 :
+                    lt,rt,rb,lb = self.getRotationPoints(self.ori,self.ori_sum,*self.points)
+                    self.ori=0
+                    line_path.moveTo(lt)
+                    line_path.lineTo(rt)
+                    line_path.lineTo(rb)
+                    line_path.lineTo(lb)
+                    line_path.lineTo(lt)
+                    self.points=[lt,rb]
+                    # self.points=lt,rt,rb,lb
+                    #line_path.addRect(rectangle)
+
+                for i in range(len(self.points)):
+                    self.drawVertex(vrtx_path, i)
+
             elif self.shape_type == "circle":
                 assert len(self.points) in [1, 2]
                 if len(self.points) == 2:
@@ -237,6 +280,17 @@ class Shape(object):
             if len(self.points) == 2:
                 rectangle = self.getRectFromLine(*self.points)
                 path.addRect(rectangle)
+        elif self.shape_type == "rotation_rectangle":
+            path = QtGui.QPainterPath()
+            if len(self.points) == 2:
+                lt, rt, rb, lb = self.getRotationPoints(self.ori, self.ori_sum,*self.points)
+                self.ori=0
+                path.moveTo(lt)
+                path.lineTo(rt)
+                path.lineTo(rb)
+                path.lineTo(lb)
+                path.lineTo(lt)
+                self.points=[lt,rb]
         elif self.shape_type == "circle":
             path = QtGui.QPainterPath()
             if len(self.points) == 2:
@@ -281,6 +335,33 @@ class HelpShape(Shape):
     def _inside(self, points, size):
         return points.x() >= 0 and points.y() >= 0 and points.x() <= size.width() - 1 and points.y() <= size.height() - 1
 
+    def paint(self, painter, size):
+        if self.points and self.points[0] != self.points[1]:
+            color = (
+                self.select_line_color if self.selected else self.line_color
+            )
+            pen = QtGui.QPen(color)
+            # Try using integer sizes for smoother drawing(?)
+            pen.setWidth(0.1)
+            pen.setStyle(QtCore.Qt.DashLine)
+            painter.setPen(pen)
+
+            direct1 = direct2 = self.points[1] - self.points[0]
+            while self._inside(self.points[0] + direct1, size):
+                direct1 *= 2
+            pt1 = self.points[0] + direct1
+            while self._inside(self.points[0] - direct2, size):
+                direct2 *= 2
+            pt2 = self.points[0] - direct1
+
+            painter.drawLine(self.points[1], pt1)
+            painter.drawLine(self.points[0], pt2)
+            pen.setStyle(QtCore.Qt.SolidLine)
+            pen.setColor(QtGui.QColor(255, 0, 0, 128))
+            painter.setPen(pen)
+            painter.drawLine(*self.points)
+
+class LimitBox(Shape):
     def paint(self, painter, size):
         if self.points and self.points[0] != self.points[1]:
             color = (

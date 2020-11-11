@@ -3,9 +3,8 @@ from qtpy import QtGui
 from qtpy import QtWidgets
 
 from labelme import QT5
-from labelme.shape import Shape, HelpShape
+from labelme.shape import Shape, HelpShape,LimitBox
 import labelme.utils
-
 
 # TODO(unknown):
 # - [maybe] Find optimal epsilon value.
@@ -19,7 +18,6 @@ CURSOR_GRAB = QtCore.Qt.OpenHandCursor
 
 
 class Canvas(QtWidgets.QWidget):
-
     zoomRequest = QtCore.Signal(int, QtCore.QPoint)
     scrollRequest = QtCore.Signal(int, int)
     newShape = QtCore.Signal()
@@ -61,7 +59,7 @@ class Canvas(QtWidgets.QWidget):
         self.line = Shape()
 
         self.helpline = [HelpShape() for _ in range(4)]
-
+        self.limit_box= LimitBox()
         self.prevPoint = QtCore.QPoint()
         self.prevMovePoint = QtCore.QPoint()
         self.offsets = QtCore.QPoint(), QtCore.QPoint()
@@ -102,6 +100,7 @@ class Canvas(QtWidgets.QWidget):
         if value not in [
             "polygon",
             "rectangle",
+            'rotation_rectangle',
             "circle",
             "line",
             "point",
@@ -121,7 +120,7 @@ class Canvas(QtWidgets.QWidget):
     @property
     def isShapeRestorable(self):
         if len(self.shapesBackups) < 2:
-            return False
+            return Falseself.limit_box
         return True
 
     def restoreShape(self):
@@ -198,9 +197,9 @@ class Canvas(QtWidgets.QWidget):
                 # Project the point to the pixmap's edges.
                 pos = self.intersectionPoint(self.current[-1], pos)
             elif (
-                len(self.current) > 1
-                and self.createMode == "polygon"
-                and self.closeEnough(pos, self.current[0])
+                    len(self.current) > 1
+                    and self.createMode == "polygon"
+                    and self.closeEnough(pos, self.current[0])
             ):
                 # Attract line to starting point and
                 # colorise to alert the user.
@@ -211,6 +210,9 @@ class Canvas(QtWidgets.QWidget):
                 self.line[0] = self.current[-1]
                 self.line[1] = pos
             elif self.createMode == "rectangle":
+                self.line.points = [self.current[0], pos]
+                self.line.close()
+            elif self.createMode == "rotation_rectangle":
                 self.line.points = [self.current[0], pos]
                 self.line.close()
             elif self.createMode == "circle":
@@ -333,7 +335,7 @@ class Canvas(QtWidgets.QWidget):
                         self.line[0] = self.current[-1]
                         if self.current.isClosed():
                             self.finalise()
-                    elif self.createMode in ["rectangle", "circle", "line"]:
+                    elif self.createMode in ["rectangle", "circle", "line","rotation_rectangle"]:
                         assert len(self.current.points) == 1
                         self.current.points = self.line.points
                         self.finalise()
@@ -371,8 +373,8 @@ class Canvas(QtWidgets.QWidget):
             menu = self.menus[len(self.selectedShapesCopy) > 0]
             self.restoreCursor()
             if (
-                not menu.exec_(self.mapToGlobal(ev.pos()))
-                and self.selectedShapesCopy
+                    not menu.exec_(self.mapToGlobal(ev.pos()))
+                    and self.selectedShapesCopy
             ):
                 # Cancel the move by deleting the shadow copy.
                 self.selectedShapesCopy = []
@@ -380,15 +382,15 @@ class Canvas(QtWidgets.QWidget):
         elif ev.button() == QtCore.Qt.LeftButton and self.selectedShapes:
             self.overrideCursor(CURSOR_GRAB)
             if (
-                self.editing()
-                and int(ev.modifiers()) == QtCore.Qt.ShiftModifier
+                    self.editing()
+                    and int(ev.modifiers()) == QtCore.Qt.ShiftModifier
             ):
                 # Add point to line if: left-click + SHIFT on a line segment
                 self.addPointToEdge()
         elif ev.button() == QtCore.Qt.LeftButton and self.selectedVertex():
             if (
-                self.editing()
-                and int(ev.modifiers()) == QtCore.Qt.ShiftModifier
+                    self.editing()
+                    and int(ev.modifiers()) == QtCore.Qt.ShiftModifier
             ):
                 # Delete point if: left-click + SHIFT on a point
                 self.removeSelectedPoint()
@@ -396,8 +398,8 @@ class Canvas(QtWidgets.QWidget):
         if self.movingShape and self.hShape:
             index = self.shapes.index(self.hShape)
             if (
-                self.shapesBackups[-1][index].points
-                != self.shapes[index].points
+                    self.shapesBackups[-1][index].points
+                    != self.shapes[index].points
             ):
                 self.storeShapes()
                 self.shapeMoved.emit()
@@ -438,9 +440,9 @@ class Canvas(QtWidgets.QWidget):
         # We need at least 4 points here, since the mousePress handler
         # adds an extra one before this handler is called.
         if (
-            self.double_click == "close"
-            and self.canCloseShape()
-            and len(self.current) > 3
+                self.double_click == "close"
+                and self.canCloseShape()
+                and len(self.current) > 3
         ):
             self.current.popPoint()
             self.finalise()
@@ -573,10 +575,10 @@ class Canvas(QtWidgets.QWidget):
                 s.paint(p)
 
         if (
-            self.fillDrawing()
-            and self.createMode == "polygon"
-            and self.current is not None
-            and len(self.current.points) >= 2
+                self.fillDrawing()
+                and self.createMode == "polygon"
+                and self.current is not None
+                and len(self.current.points) >= 2
         ):
             drawing_shape = self.current.copy()
             drawing_shape.addPoint(self.line[1])
@@ -584,7 +586,7 @@ class Canvas(QtWidgets.QWidget):
             drawing_shape.paint(p)
 
         self.updatehelpline(p)
-
+        self.updateLimitBox(p)
         p.end()
 
     def transformPos(self, point):
@@ -622,6 +624,9 @@ class Canvas(QtWidgets.QWidget):
                     hl.points = [p1, p2]
                     hl.shape_type = 'line'
                     hl.paint(p, self.pixmap.size())
+
+    def updateLimitBox(self,p):
+        self.limit_box.paint(p, self.pixmap.size())
 
     def finalise(self):
         assert self.current
@@ -717,6 +722,10 @@ class Canvas(QtWidgets.QWidget):
                 # scroll
                 self.scrollRequest.emit(delta.x(), QtCore.Qt.Horizontal)
                 self.scrollRequest.emit(delta.y(), QtCore.Qt.Vertical)
+                if self.hShape is not None:
+                    self.hShape.ori=0.0001*delta.y()
+                    self.hShape.ori_sum+=self.hShape.ori
+                    self.shapeMoved.emit()
         else:
             if ev.orientation() == QtCore.Qt.Vertical:
                 mods = ev.modifiers()
@@ -757,7 +766,7 @@ class Canvas(QtWidgets.QWidget):
         self.current.setOpen()
         if self.createMode in ["polygon", "linestrip"]:
             self.line.points = [self.current[-1], self.current[0]]
-        elif self.createMode in ["rectangle", "line", "circle"]:
+        elif self.createMode in ["rectangle", "line", "circle","rotation_rectangle"]:
             self.current.points = self.current.points[0:1]
         elif self.createMode == "point":
             self.current = None
