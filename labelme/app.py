@@ -1190,7 +1190,7 @@ class MainWindow(QtWidgets.QMainWindow):
             shape_type = shape["shape_type"]
             flags = shape["flags"]
             group_id = shape["group_id"]
-            ori_sum= shape["other_data"]["orientation"]
+            ori_sum= 0 if "orientation" not in shape["other_data"] else shape["other_data"]["orientation"]
             other_data = shape["other_data"]
 
             shape = Shape(
